@@ -361,7 +361,17 @@ void GeneralControl::thread_weather() {
 	while(1) {
 		boost::this_thread::sleep_for(period);
 
-		if (!read_weather(tmnew, spdopen, spdclo)) {
+		// 计算太阳高度角和时段类型
+		altsun = sun_altitude();
+		odt = altsun >= param_->openSunAlt && altsun >= param_->cloSunAlt ? ODT_DAY : ODT_NIGHT;
+		if (odt == ODT_DAY) {// 白天忽略风速检查
+			// 逐一检查并改变天窗开关状态
+			mutex_lock lck(mtx_tcpc_dome_);
+			for (DomeNetVec::iterator it = tcpc_dome_.begin(); it != tcpc_dome_.end(); ++it) {
+				if ((*it).automode) switch_slit(*it, odt, 0.0, 0.0);
+			}
+		}
+		else if (!read_weather(tmnew, spdopen, spdclo)) {
 			_gLog.Write(LOG_FAULT, NULL, "failed to access weather file or wrong file style");
 		}
 		else if (tmold == tmnew) {
@@ -369,9 +379,6 @@ void GeneralControl::thread_weather() {
 		}
 		else {
 			tmold = tmnew;
-			// 计算太阳高度角和时段类型
-			altsun = sun_altitude();
-			odt = altsun >= param_->openSunAlt && altsun >= param_->cloSunAlt ? ODT_DAY : ODT_NIGHT;
 			// 逐一检查并改变天窗开关状态
 			mutex_lock lck(mtx_tcpc_dome_);
 			for (DomeNetVec::iterator it = tcpc_dome_.begin(); it != tcpc_dome_.end(); ++it) {
