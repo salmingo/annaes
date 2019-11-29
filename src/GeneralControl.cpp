@@ -193,8 +193,11 @@ void GeneralControl::process_protocol_dome(apbase proto, TCPClient* client) {
 		DomeNetVec::iterator it;
 		mutex_lock lck(mtx_tcpc_dome_);
 
-		for (it = tcpc_dome_.begin(); it != tcpc_dome_.end() && gid != (*it).gid; ++it);
-		if (it != tcpc_dome_.end()) (*it).state = slit->state;
+		for (it = tcpc_dome_.begin(); it != tcpc_dome_.end() && client != (*it).tcp.get(); ++it);
+		if (it != tcpc_dome_.end()) {
+			if ((*it).gid.empty()) (*it).gid = gid;
+			(*it).state = slit->state;
+		}
 	}
 }
 
@@ -361,17 +364,7 @@ void GeneralControl::thread_weather() {
 	while(1) {
 		boost::this_thread::sleep_for(period);
 
-		// 计算太阳高度角和时段类型
-		altsun = sun_altitude();
-		odt = altsun >= param_->openSunAlt && altsun >= param_->cloSunAlt ? ODT_DAY : ODT_NIGHT;
-		if (odt == ODT_DAY) {// 白天忽略风速检查
-			// 逐一检查并改变天窗开关状态
-			mutex_lock lck(mtx_tcpc_dome_);
-			for (DomeNetVec::iterator it = tcpc_dome_.begin(); it != tcpc_dome_.end(); ++it) {
-				if ((*it).automode) switch_slit(*it, odt, 0.0, 0.0);
-			}
-		}
-		else if (!read_weather(tmnew, spdopen, spdclo)) {
+		if (!read_weather(tmnew, spdopen, spdclo)) {
 			_gLog.Write(LOG_FAULT, NULL, "failed to access weather file or wrong file style");
 		}
 		else if (tmold == tmnew) {
@@ -379,6 +372,9 @@ void GeneralControl::thread_weather() {
 		}
 		else {
 			tmold = tmnew;
+			// 计算太阳高度角和时段类型
+			altsun = sun_altitude();
+			odt = altsun >= param_->openSunAlt && altsun >= param_->cloSunAlt ? ODT_DAY : ODT_NIGHT;
 			// 逐一检查并改变天窗开关状态
 			mutex_lock lck(mtx_tcpc_dome_);
 			for (DomeNetVec::iterator it = tcpc_dome_.begin(); it != tcpc_dome_.end(); ++it) {
